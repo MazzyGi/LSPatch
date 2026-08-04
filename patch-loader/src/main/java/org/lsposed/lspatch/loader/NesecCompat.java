@@ -1,5 +1,7 @@
 package org.lsposed.lspatch.loader;
 
+import android.util.Log;
+
 import java.lang.reflect.Method;
 
 import de.robv.android.xposed.XC_MethodHook;
