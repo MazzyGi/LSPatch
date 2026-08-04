@@ -92,6 +92,14 @@ public class LSPApplication {
         LSPLoader.initModules(appLoadedApk);
         Log.i(TAG, "Modules initialized");
 
+        // Nesec (网易盾) bypass — installed BEFORE switchAllClassLoader
+        // so hooks are active before nesec wrapper runs detection.
+        try {
+            NesecCompat.install(appLoadedApk.getClassLoader());
+        } catch (Throwable t) {
+            Log.w(TAG, "NesecCompat skipped", t);
+        }
+
         switchAllClassLoader();
         SigBypass.doSigBypass(context, config.optInt("sigBypassLevel"));
 
