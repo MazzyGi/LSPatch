@@ -180,23 +180,20 @@ static void NesecCompat_nativeBlockExit(JNIEnv*, jclass) {
     patch_libnesec_exit();
 }
 
-// Use RegisterNatives in JNI_OnLoad to register nativeBlockExit
-// This is needed because LSPatch's JNI_OnLoad uses RegisterNatives
-// which disables automatic name-based linking for that classloader.
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     JNIEnv* env;
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
         return JNI_ERR;
     }
 
-    // Register NesecCompat.nativeBlockExit
-    JNINativeMethod nesecMethods[] = {
-        {"nativeBlockExit", "()V", (void*)NesecCompat_nativeBlockExit}
-    };
-    jclass nesecCls = env->FindClass("org/lsposed/lspatch/loader/NesecCompat");
-    if (nesecCls) {
-        env->RegisterNatives(nesecCls, nesecMethods, 1);
-        env->DeleteLocalRef(nesecCls);
+    // Install seccomp exit_group block immediately at liblspatch.so load time.
+    // This runs before nesec detection, blocking inline exit_group syscall.
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
+        LOGE("prctl PR_SET_NO_NEW_PRIVS failed");
+    } else if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &bpf_prog) < 0) {
+        LOGE("seccomp install failed");
+    } else {
+        LOGI("seccomp exit_block installed in JNI_OnLoad");
     }
 
     lspd::PatchLoader::Init();

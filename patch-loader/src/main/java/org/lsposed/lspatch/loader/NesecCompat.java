@@ -28,8 +28,8 @@ public class NesecCompat {
 
     private static final String TAG = "LSPatch";
 
-    // Native method implemented in patch_main.cpp — blocks exit_group syscall
-    // via seccomp BPF and patches libnesec.so exit SVCs in memory.
+    // Native method implemented in patch_main.cpp — patches libnesec.so exit SVCs.
+    // seccomp is installed in JNI_OnLoad (before this class loads).
     public static native void nativeBlockExit();
 
     public static void install(ClassLoader classLoader) {
