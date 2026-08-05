@@ -206,22 +206,19 @@ static void NesecCompat_nativeBlockExit(JNIEnv*, jclass) {
     patch_libnesec_exit();
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_org_lsposed_lspatch_loader_NesecCompat_patchNesecExit(JNIEnv*, jclass) {
+    LOGI("patchNesecExit called — scanning libnesec.so");
+    patch_libnesec_exit();
+}
+
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     JNIEnv* env;
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
         return JNI_ERR;
     }
 
-    // Install seccomp exit_group block immediately at liblspatch.so load time.
-    // This runs before nesec detection, blocking inline exit_group syscall.
-    install_sigsys_handler();
-    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
-        LOGE("prctl PR_SET_NO_NEW_PRIVS failed");
-    } else if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &bpf_prog) < 0) {
-        LOGE("seccomp install failed");
-    } else {
-        LOGI("seccomp exit_block installed in JNI_OnLoad");
-    }
+    LOGI("liblspatch JNI_OnLoad — SVC patch mode");
 
     lspd::PatchLoader::Init();
     lspd::ConfigImpl::Init();

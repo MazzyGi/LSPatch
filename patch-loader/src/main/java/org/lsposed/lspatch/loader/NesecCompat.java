@@ -28,9 +28,10 @@ public class NesecCompat {
 
     private static final String TAG = "LSPatch";
 
-    // Native method implemented in patch_main.cpp — patches libnesec.so exit SVCs.
-    // seccomp is installed in JNI_OnLoad (before this class loads).
-    public static native void nativeBlockExit();
+    // Native method — scans libnesec.so memory and NOPs exit SVCs.
+    // Implemented in patch_main.cpp, exported as
+    // Java_org_lsposed_lspatch_loader_NesecCompat_patchNesecExit
+    public static native void patchNesecExit();
 
     public static void install(ClassLoader classLoader) {
         try {
@@ -86,7 +87,7 @@ public class NesecCompat {
                         try {
                             Log.i(TAG, "MyJni.load returned " + param.getResult()
                                 + " — installing native exit block");
-                            nativeBlockExit();
+                            patchNesecExit();
                             Log.i(TAG, "native exit block installed");
                         } catch (Throwable t) {
                             Log.e(TAG, "native exit block failed", t);
