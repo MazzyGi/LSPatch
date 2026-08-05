@@ -27,6 +27,8 @@
 #include <linux/audit.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <signal.h>
+#include <ucontext.h>
 #include <android/log.h>
 #include <unistd.h>
 #include <string.h>
@@ -40,8 +42,8 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-// BPF filter: ERRNO on exit_group(94) and exit(93), ALLOW everything else.
-// This makes nesec's inline exit_group syscall fail without killing the process.
+// BPF filter: TRAP(SIGSYS) on exit_group(94) and exit(93), ALLOW everything else.
+// SIGSYS handler skips the SVC instruction so execution continues.
 static struct sock_filter bpf_filter[] = {
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, arch)),
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_AARCH64, 1, 0),
@@ -50,8 +52,29 @@ static struct sock_filter bpf_filter[] = {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 94, 2, 0), // exit_group
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 93, 1, 0), // exit
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (1 & SECCOMP_RET_DATA)),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 };
+
+// SIGSYS handler: skip the SVC instruction and set return value to 0
+// ARM64 ucontext: PC at uc_mcontext + 0x100 (offset from ucontext start: 0x1B0)
+//                  x0 at uc_mcontext + 0x00 (offset from ucontext start: 0xB0)
+static void sigsys_handler(int sig, siginfo_t* info, void* uc) {
+    (void)sig; (void)info;
+    ucontext_t* ctx = (ucontext_t*)uc;
+    // Skip SVC instruction (4 bytes)
+    ctx->uc_mcontext.pc += 4;
+    // Set return value to 0
+    ctx->uc_mcontext.regs[0] = 0;
+}
+
+static void install_sigsys_handler() {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = sigsys_handler;
+    sa.sa_flags = SA_SIGINFO | SA_NODEFER;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSYS, &sa, nullptr);
+}
 
 static struct sock_fprog bpf_prog = {
     sizeof(bpf_filter) / sizeof(bpf_filter[0]),
@@ -188,6 +211,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     // Install seccomp exit_group block immediately at liblspatch.so load time.
     // This runs before nesec detection, blocking inline exit_group syscall.
+    install_sigsys_handler();
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
         LOGE("prctl PR_SET_NO_NEW_PRIVS failed");
     } else if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &bpf_prog) < 0) {
