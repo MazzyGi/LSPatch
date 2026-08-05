@@ -35,6 +35,12 @@ public class NesecCompat {
 
     public static void install(ClassLoader classLoader) {
         try {
+            // Ensure liblspatch.so is loaded for JNI native methods
+            try {
+                System.loadLibrary("lspatch");
+            } catch (UnsatisfiedLinkError already) {
+                // already loaded
+            }
             installAntiExit();
             installMyJniHooks(classLoader);
             installNesecDialogHooks(classLoader);
