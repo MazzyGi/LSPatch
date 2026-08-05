@@ -58,22 +58,25 @@ static struct sock_filter bpf_filter[] = {
 // SIGSYS handler: skip the SVC instruction and set return value to 0
 // ARM64 ucontext: PC at uc_mcontext + 0x100 (offset from ucontext start: 0x1B0)
 //                  x0 at uc_mcontext + 0x00 (offset from ucontext start: 0xB0)
+#if defined(__aarch64__)
 static void sigsys_handler(int sig, siginfo_t* info, void* uc) {
     (void)sig; (void)info;
     ucontext_t* ctx = (ucontext_t*)uc;
-    // Skip SVC instruction (4 bytes)
-    ctx->uc_mcontext.pc += 4;
-    // Set return value to 0
-    ctx->uc_mcontext.regs[0] = 0;
+    // ARM64: uc_mcontext contains fault_address, regs[31], sp, pc, pstate
+    ctx->uc_mcontext.pc += 4;  // Skip SVC instruction
+    ctx->uc_mcontext.regs[0] = 0;  // Set x0 = 0
 }
+#endif
 
 static void install_sigsys_handler() {
+#if defined(__aarch64__)
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = sigsys_handler;
     sa.sa_flags = SA_SIGINFO | SA_NODEFER;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGSYS, &sa, nullptr);
+#endif
 }
 
 static struct sock_fprog bpf_prog = {
