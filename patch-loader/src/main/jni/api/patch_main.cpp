@@ -26,6 +26,7 @@
 #include <linux/filter.h>
 #include <linux/audit.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
 #include <android/log.h>
 #include <unistd.h>
 #include <string.h>
@@ -170,7 +171,7 @@ Java_org_lsposed_lspatch_loader_NesecCompat_nativeBlockExit(JNIEnv*, jclass) {
         LOGE("prctl PR_SET_NO_NEW_PRIVS failed");
         return;
     }
-    if (syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, 0, &bpf_prog) < 0) {
+    if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &bpf_prog) < 0) {
         LOGE("seccomp install failed");
     } else {
         LOGI("seccomp exit_block installed");
