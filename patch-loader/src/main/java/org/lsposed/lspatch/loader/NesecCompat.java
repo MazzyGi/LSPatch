@@ -28,12 +28,18 @@ public class NesecCompat {
 
     private static final String TAG = "LSPatch";
 
+    // Native method implemented in patch_main.cpp — blocks exit_group syscall
+    // via seccomp BPF and patches libnesec.so exit SVCs in memory.
+    public static native void nativeBlockExit();
+
     public static void install(ClassLoader classLoader) {
         try {
             installAntiExit();
             installMyJniHooks(classLoader);
             installNesecDialogHooks(classLoader);
             installThreadBlock();
+            // Install native exit_group block after MyJni.load completes
+            // (libnesec.so is loaded, detection code is in memory)
             Log.i(TAG, "NesecCompat installed");
         } catch (Throwable t) {
             Log.e(TAG, "NesecCompat install failed", t);
@@ -71,6 +77,24 @@ public class NesecCompat {
             String name = m.getName();
             Class<?> rt = m.getReturnType();
             Class<?>[] params = m.getParameterTypes();
+
+            // Hook MyJni.load — after libnesec.so loads, install native exit block
+            if ("load".equals(name)) {
+                XposedBridge.hookMethod(m, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        try {
+                            Log.i(TAG, "MyJni.load returned " + param.getResult()
+                                + " — installing native exit block");
+                            nativeBlockExit();
+                            Log.i(TAG, "native exit block installed");
+                        } catch (Throwable t) {
+                            Log.e(TAG, "native exit block failed", t);
+                        }
+                    }
+                });
+                continue;
+            }
 
             if (("run".equals(name) || "ra".equals(name) || "rp".equals(name))
                     && rt == boolean.class && params.length == 2
